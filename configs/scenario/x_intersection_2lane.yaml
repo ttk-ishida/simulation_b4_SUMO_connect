@@ -1,0 +1,15 @@
+# Scenario-specific configuration for a single 2-lane X intersection.
+
+sumo:
+  # Relative to paths.scenario_dir (in base.yaml or this file)
+  sumocfg_path: "x_intersection_2lane/sumo.sumocfg"
+  gui: false
+  additional_traci_cmd: []
+
+rsu:
+  x_m: 500.0
+  y_m: 500.0
+  coverage_radius_m: 250.0
+
+traffic:
+  notes: "Demand controlled by routes.rou.xml unless overridden in runner."

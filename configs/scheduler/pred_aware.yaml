@@ -1,0 +1,22 @@
+scheduler:
+  name: "pred_aware"
+  params:
+    use_effective_deadline: true
+    eps: 1.0e-9
+
+    # Dense-side: F_dense = w(P) * 1/(S + eps)
+    priority_weight:
+      name: "linear"   # "linear" or "power"
+      params:
+        gamma: 2.0     # used only if name=power
+
+    # Sparse-side: F_sparse = max(0, 1 - (W0 + s_i)/R_i)
+    # (This is equivalent to I_next * M_next with M = 1 - (W0+s)/R.)
+    sparse_margin:
+      enabled: true
+
+    # Alpha computed from predicted future load:
+    # rho_future = lambda_hat_task * E[C]
+    # alpha = rho / (1 + rho)
+    alpha_from_prediction: true
+    horizon_s: 5.0            # can override prediction.horizon_s

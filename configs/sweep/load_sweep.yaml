@@ -1,0 +1,14 @@
+# Sweep predicted load horizon and synthetic inflow base probability (to stress alpha dynamics).
+sweep:
+  name: "load_sweep"
+  base_config: "configs/base.yaml"
+  scenario_config: "configs/scenario/x_intersection_2lane.yaml"
+  scheduler_configs:
+    - "configs/scheduler/pred_aware.yaml"
+
+  runs_per_point: 3
+  seeds: [11, 12, 13]
+
+  grid:
+    prediction.horizon_s: [2.0, 5.0, 10.0]
+    prediction.inflow_estimator.params.base_entry_prob: [0.2, 0.35, 0.5]

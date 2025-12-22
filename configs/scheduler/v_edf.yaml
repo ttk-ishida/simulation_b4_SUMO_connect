@@ -1,0 +1,13 @@
+scheduler:
+  name: "v_edf"
+  params:
+    # Single-core downgrade of the paper-inspired V-EDF:
+    # Rank by priority first, then deadline (or a combined key).
+    # Implementer can choose exact tie-breakers; these flags document intent.
+    use_effective_deadline: true
+    primary_key: "priority_desc"     # "priority_desc" | "deadline_asc" | "combined"
+    secondary_key: "deadline_asc"
+    # Optional weighting if using a combined score
+    combined:
+      w_priority: 0.6
+      w_deadline: 0.4

@@ -1,0 +1,5 @@
+scheduler:
+  name: "edf"
+  params:
+    # use effective deadline D_eff = min(task_deadline, stay_deadline)
+    use_effective_deadline: true

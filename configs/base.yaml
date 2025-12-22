@@ -1,0 +1,142 @@
+# Base experiment configuration (common defaults)
+# Units:
+#  - time: seconds [s]
+#  - data size: bits [bit]
+#  - cpu frequency: cycles per second [cycle/s]
+#  - bandwidth: Hz
+#  - power: Watts (if used)
+#  - distances: meters [m]
+#
+# NOTE: This file is designed to be combined with scenario/* and scheduler/* configs.
+# You can implement a simple config loader that:
+#   1) loads this base.yaml,
+#   2) merges scenario config (configs/scenario/*.yaml),
+#   3) merges scheduler config (configs/scheduler/*.yaml),
+#   4) optionally merges a sweep override.
+
+meta:
+  project: vec-queue-sim
+  version: 0.1
+  description: "Single-RSU single-core MEC with single queue; SUMO+TraCI simulation"
+
+paths:
+  scenario_dir: "scenarios"
+  results_dir: "results"
+
+sim:
+  seed: 42
+  step_length_s: 0.2          # SUMO/TraCI time step length
+  duration_s: 600             # total simulation time
+  warmup_s: 0                 # optional warmup period (ignored in metrics)
+  log_level: "INFO"
+
+sumo:
+  gui: false
+  # scenario config should set sumocfg_path (relative to scenario_dir)
+  sumocfg_path: null
+  additional_traci_cmd: []    # extra SUMO cmd args, if needed
+
+rsu:
+  id: "rsu0"
+  x_m: 0.0
+  y_m: 0.0
+  coverage_radius_m: 250.0
+
+mec:
+  cpu_freq_hz: 3.0e9          # 3 GHz single core
+  non_preemptive: true
+  queue:
+    max_len: 1000000          # big number => practically unbounded
+    admission:
+      # If true, drop tasks that are impossible even if scheduled next.
+      drop_if_impossible_next: true
+
+task_generation:
+  # Per-vehicle Poisson task generation rate (tasks/s/vehicle)
+  mu_tasks_per_s_per_vehicle: 0.05
+  # Input data size distribution for uplink [bit]
+  input_bits_dist:
+    name: "lognormal"
+    params:
+      mean_bits: 2.0e6        # ~2 Mbit (~250 KB)
+      sigma: 0.6
+      min_bits: 1.0e5
+      max_bits: 2.0e7
+  # Deadline distribution (relative deadline from generation) [s]
+  deadline_dist:
+    name: "uniform"
+    params:
+      low_s: 0.5
+      high_s: 3.0
+
+cycles_dist:
+  # CPU cycles required per task [cycle]
+  # Choose a distribution and compute E[cycles] analytically in code (or precompute).
+  name: "mixture_lognormal"
+  params:
+    # Two-component mixture (light vs heavy)
+    w_light: 0.8
+    light:
+      mean_cycles: 5.0e8
+      sigma: 0.5
+      min_cycles: 5.0e7
+      max_cycles: 2.0e9
+    heavy:
+      mean_cycles: 2.0e9
+      sigma: 0.6
+      min_cycles: 2.0e8
+      max_cycles: 1.0e10
+
+priority:
+  # Continuous priority P in [0,1]
+  model:
+    name: "beta"
+    params:
+      a: 2.0
+      b: 5.0
+  # Optional: define "high priority" threshold for counting high arrivals (used in prediction)
+  high_threshold: 0.7
+
+comm:
+  uplink:
+    enabled: true
+    # rate model: "fixed" or "shannon"
+    rate_model: "shannon"
+    fixed_rate_bps: 2.0e6     # used only if rate_model=fixed
+    shannon:
+      bandwidth_hz: 10.0e6
+      tx_power_w: 0.2
+      noise_power_w: 1.0e-9
+      # Simple pathloss model (used to compute received power)
+      pathloss:
+        name: "log_distance"
+        params:
+          pl0_db: 60.0
+          d0_m: 1.0
+          n: 2.7
+          shadow_sigma_db: 0.0   # set >0 if you want randomness
+
+prediction:
+  # Prediction horizon used to estimate inflow and future load
+  horizon_s: 5.0
+  # If you don't implement real trajectory prediction, use a synthetic inflow model.
+  # The estimator should output expected number of incoming vehicles within horizon.
+  inflow_estimator:
+    name: "synthetic_from_edges"   # e.g., random edge entry probabilities
+    params:
+      # Used only by the synthetic estimator; scenario may override.
+      base_entry_prob: 0.3
+      noise_std: 0.05
+  # alpha mapping: alpha = rho / (1 + rho)
+  alpha_mapping:
+    name: "rho_over_one_plus_rho"
+
+logging:
+  record_raw_events: true
+  raw_format: "jsonl"      # jsonl or csv
+  record_vehicle_traces: false
+
+output:
+  run_name: "dev"
+  save_dir: "results/raw"
+  summary_dir: "results/summaries"

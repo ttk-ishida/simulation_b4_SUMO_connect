@@ -1,0 +1,15 @@
+# Sweep uplink model parameters (fixed rate and bandwidth).
+sweep:
+  name: "uplink_sweep"
+  base_config: "configs/base.yaml"
+  scenario_config: "configs/scenario/x_intersection_2lane.yaml"
+  scheduler_configs:
+    - "configs/scheduler/edf.yaml"
+    - "configs/scheduler/pred_aware.yaml"
+
+  runs_per_point: 3
+  seeds: [21, 22, 23]
+
+  grid:
+    comm.uplink.rate_model: ["fixed"]
+    comm.uplink.fixed_rate_bps: [1.0e6, 2.0e6, 5.0e6, 1.0e7]

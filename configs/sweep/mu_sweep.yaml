@@ -1,0 +1,16 @@
+# Sweep per-vehicle Poisson task rate mu (tasks/s/vehicle).
+sweep:
+  name: "mu_sweep"
+  base_config: "configs/base.yaml"
+  scenario_config: "configs/scenario/x_intersection_2lane.yaml"
+  scheduler_configs:
+    - "configs/scheduler/fifo.yaml"
+    - "configs/scheduler/edf.yaml"
+    - "configs/scheduler/v_edf.yaml"
+    - "configs/scheduler/pred_aware.yaml"
+
+  runs_per_point: 3
+  seeds: [1, 2, 3]
+
+  grid:
+    task_generation.mu_tasks_per_s_per_vehicle: [0.01, 0.03, 0.05, 0.08, 0.12]
