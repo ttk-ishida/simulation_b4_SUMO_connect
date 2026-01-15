@@ -25,6 +25,8 @@ paths:
 
 sim:
   seed: 42
+  task_seed: 42            # RNG for task attributes + uplink randomness
+  noise_seed: 42           # RNG for prediction error (N_hat)
   step_length_s: 0.2          # SUMO/TraCI time step length
   duration_s: 600             # total simulation time
   warmup_s: 0                 # optional warmup period (ignored in metrics)
@@ -38,12 +40,12 @@ sumo:
 
 rsu:
   id: "rsu0"
-  x_m: 0.0
-  y_m: 0.0
-  coverage_radius_m: 250.0
+  x_m: 500.0
+  y_m: 500.0
+  coverage_radius_m: 1000.0
 
 mec:
-  cpu_freq_hz: 3.0e9          # 3 GHz single core
+  cpu_freq_hz: 1.5e10        # 10 GHz single core
   non_preemptive: true
   queue:
     max_len: 1000000          # big number => practically unbounded
@@ -53,47 +55,35 @@ mec:
 
 task_generation:
   # Per-vehicle Poisson task generation rate (tasks/s/vehicle)
-  mu_tasks_per_s_per_vehicle: 0.05
+  mu_tasks_per_s_per_vehicle: 1.0
   # Input data size distribution for uplink [bit]
   input_bits_dist:
-    name: "lognormal"
+    name: "uniform"
     params:
-      mean_bits: 2.0e6        # ~2 Mbit (~250 KB)
-      sigma: 0.6
-      min_bits: 1.0e5
-      max_bits: 2.0e7
+      low_bits: 4.0e6 # 0.5 MB
+      high_bits: 8.0e6 # 1.0 MB
   # Deadline distribution (relative deadline from generation) [s]
   deadline_dist:
     name: "uniform"
     params:
-      low_s: 0.5
-      high_s: 3.0
+      low_s: 0.2
+      high_s: 10.0
 
 cycles_dist:
   # CPU cycles required per task [cycle]
   # Choose a distribution and compute E[cycles] analytically in code (or precompute).
-  name: "mixture_lognormal"
+  name: "uniform"
   params:
-    # Two-component mixture (light vs heavy)
-    w_light: 0.8
-    light:
-      mean_cycles: 5.0e8
-      sigma: 0.5
-      min_cycles: 5.0e7
-      max_cycles: 2.0e9
-    heavy:
-      mean_cycles: 2.0e9
-      sigma: 0.6
-      min_cycles: 2.0e8
-      max_cycles: 1.0e10
+    low_cycles: 5.0e8
+    high_cycles: 5.0e9
 
 priority:
   # Continuous priority P in [0,1]
   model:
     name: "beta"
     params:
-      a: 2.0
-      b: 5.0
+      a: 1.0
+      b: 1.0
   # Optional: define "high priority" threshold for counting high arrivals (used in prediction)
   high_threshold: 0.7
 
@@ -101,8 +91,8 @@ comm:
   uplink:
     enabled: true
     # rate model: "fixed" or "shannon"
-    rate_model: "shannon"
-    fixed_rate_bps: 2.0e6     # used only if rate_model=fixed
+    rate_model: "fixed"
+    fixed_rate_bps: 8.0e6     # used only if rate_model=fixed
     shannon:
       bandwidth_hz: 10.0e6
       tx_power_w: 0.2
@@ -118,18 +108,36 @@ comm:
 
 prediction:
   # Prediction horizon used to estimate inflow and future load
-  horizon_s: 5.0
+  horizon_s: 60.0
   # If you don't implement real trajectory prediction, use a synthetic inflow model.
   # The estimator should output expected number of incoming vehicles within horizon.
   inflow_estimator:
-    name: "synthetic_from_edges"   # e.g., random edge entry probabilities
+    name: "from_profile"   # or "synthetic_from_edges"
     params:
       # Used only by the synthetic estimator; scenario may override.
       base_entry_prob: 0.3
       noise_std: 0.05
-  # alpha mapping: alpha = rho / (1 + rho)
+  inflow_profile:
+    # Piecewise inflow rate [veh/s] for N_true(t, Δ) calculation.
+    segments:
+      - { t_start_s: 0, t_end_s: 600, rate_veh_per_s: 0.2 }
+  inflow_timeseries:
+    # Optional: CSV with columns t_s,n_true,alpha_true (n_true counts in [t, t+Δ]).
+    path: ""
+    horizon_s: 60.0
+  # N_hat = N_true * (1 + e), e ~ Uniform[-sigma, +sigma] by default.
+  error:
+    sigma: 0.0
+    dist: "uniform"
+  capacity:
+    # N_C: max concurrent vehicles within coverage (from SUMO saturation test).
+    n_c: 469.0
+  # alpha mapping
   alpha_mapping:
-    name: "rho_over_one_plus_rho"
+    name: "sigmoid_capacity"
+    params:
+      a: 10.0
+      b: 0.8
 
 logging:
   record_raw_events: true
@@ -137,6 +145,6 @@ logging:
   record_vehicle_traces: false
 
 output:
-  run_name: "dev"
+  run_name: "alpha_sigma0p00"
   save_dir: "results/raw"
   summary_dir: "results/summaries"

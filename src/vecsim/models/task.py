@@ -26,6 +26,7 @@ class Task:
     created_t: float
 
     # Constraints
+    relative_deadline_s: float        # relative deadline from creation [s]
     deadline_t: float                 # created_t + relative_deadline
     stay_deadline_t: float            # created_t + predicted_stay_time (coverage constraint)
     effective_deadline_t: float       # min(deadline_t, stay_deadline_t)

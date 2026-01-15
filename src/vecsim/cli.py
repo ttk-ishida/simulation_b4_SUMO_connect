@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .logging_conf import setup_logging
@@ -43,36 +45,54 @@ def cmd_sweep(ns: argparse.Namespace) -> int:
     sweep_cfg = sweep_doc.get("sweep", {}) or {}
 
     base_config = str(sweep_cfg["base_config"])
-    scenario_config = str(sweep_cfg["scenario_config"])
+    scenario_config = sweep_cfg.get("scenario_config", None)
+    scenario_configs = sweep_cfg.get("scenario_configs", None)
+    if scenario_config is None and scenario_configs is None:
+        raise SystemExit("Sweep config must set scenario_config or scenario_configs.")
+    if scenario_configs is None:
+        scenario_configs = [str(scenario_config)]
+    else:
+        scenario_configs = [str(x) for x in scenario_configs]
     scheduler_configs = list(sweep_cfg["scheduler_configs"])
     runs_per_point = int(sweep_cfg.get("runs_per_point", 1))
     seeds = list(sweep_cfg.get("seeds", []))
     grid = sweep_cfg.get("grid", {}) or {}
+    sweep_name = str(sweep_cfg.get("name", "sweep"))
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    summary_dir = Path("results/summaries") / f"{sweep_name}_{ts}"
+    summary_dir.mkdir(parents=True, exist_ok=True)
 
     keys = list(grid.keys())
     points = _cartesian_product(keys, grid)
 
     if not points:
-        raise ValueError("Sweep grid is empty.")
+        points = [{}]
 
     total = 0
-    for sched_cfg in scheduler_configs:
-        for point in points:
-            for r in range(runs_per_point):
-                total += 1
-                seed = int(seeds[(total - 1) % len(seeds)]) if seeds else None
+    for scen_cfg in scenario_configs:
+        for sched_cfg in scheduler_configs:
+            for point in points:
+                for r in range(runs_per_point):
+                    total += 1
+                    seed = int(seeds[(total - 1) % len(seeds)]) if seeds else None
 
-                overrides = dict(point)
-                if seed is not None:
-                    overrides["sim.seed"] = seed
+                    overrides = dict(point)
+                    if seed is not None:
+                        overrides["sim.seed"] = seed
+                        if "sim.task_seed" not in overrides:
+                            overrides["sim.task_seed"] = seed
+                        if "sim.noise_seed" not in overrides:
+                            overrides["sim.noise_seed"] = seed
+                    overrides["output.summary_dir"] = str(summary_dir)
 
-                log.info("Sweep run #%d | scheduler=%s | overrides=%s", total, sched_cfg, overrides)
-                run_once(RunArgs(
-                    config_path=base_config,
-                    scenario_config_path=scenario_config,
-                    scheduler_config_path=str(sched_cfg),
-                    overrides=overrides,
-                ))
+                    log.info("Sweep run #%d | scenario=%s | scheduler=%s | overrides=%s", total, scen_cfg, sched_cfg, overrides)
+                    run_once(RunArgs(
+                        config_path=base_config,
+                        scenario_config_path=scen_cfg,
+                        scheduler_config_path=str(sched_cfg),
+                        overrides=overrides,
+                    ))
     return 0
 
 

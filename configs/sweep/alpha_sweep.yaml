@@ -1,0 +1,30 @@
+# Alpha sweep: 11 profiles x schedulers x seeds
+sweep:
+  name: "alpha_sweep"
+  base_config: "configs/base.yaml"
+  scenario_configs:
+    # - "configs/scenario/alpha_profiles/alpha_0p0.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p1.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p2.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p3.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p4.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p5.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p6.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p7.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p8.yaml"
+    - "configs/scenario/alpha_profiles/alpha_0p9.yaml"
+    # - "configs/scenario/alpha_profiles/alpha_1p0.yaml"
+  scheduler_configs:
+    # - "configs/scheduler/fifo.yaml"
+    # - "configs/scheduler/edf.yaml"
+    - "configs/scheduler/e_edf.yaml"
+    - "configs/scheduler/priority.yaml"
+    # - "configs/scheduler/v_edf.yaml"
+    # - "configs/scheduler/pred_aware.yaml"
+    - "configs/scheduler/prediction_aware.yaml"
+
+  runs_per_point: 1
+  seeds:
+    - 1
+
+  grid: {}

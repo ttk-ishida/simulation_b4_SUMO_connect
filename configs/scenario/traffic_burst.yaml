@@ -7,14 +7,15 @@ burst:
   # Piecewise schedule for mu (tasks/s/vehicle)
   # Times are absolute simulation times [s].
   mu_schedule:
-    - { t_start_s: 0,   t_end_s: 200, mu: 0.03 }
-    - { t_start_s: 200, t_end_s: 320, mu: 0.12 }   # burst window
-    - { t_start_s: 320, t_end_s: 600, mu: 0.03 }
+    - { t_start_s: 0,   t_end_s: 200, mu: 0.05 }
+    - { t_start_s: 200, t_end_s: 320, mu: 0.05 }   # burst window
+    - { t_start_s: 320, t_end_s: 600, mu: 0.05 }
 
 prediction:
   inflow_estimator:
-    # Optionally tie synthetic inflow estimator to the burst schedule
-    name: "synthetic_from_edges"
-    params:
-      base_entry_prob: 0.35
-      noise_std: 0.05
+    name: "from_profile"
+  inflow_profile:
+    segments:
+      - { t_start_s: 0, t_end_s: 200, rate_veh_per_s: 0.2 }
+      - { t_start_s: 200, t_end_s: 320, rate_veh_per_s: 0.4 }
+      - { t_start_s: 320, t_end_s: 600, rate_veh_per_s: 0.2 }

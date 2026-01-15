@@ -1,0 +1,10 @@
+# Saturation traffic scenario for N_C estimation.
+sumo:
+  sumocfg_path: "x_intersection_2lane/nc_saturation/sumo.sumocfg"
+  gui: false
+  additional_traci_cmd: []
+
+rsu:
+  x_m: 500.0
+  y_m: 500.0
+  coverage_radius_m: 1000.0
