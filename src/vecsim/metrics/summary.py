@@ -20,13 +20,22 @@ def _percentile(xs: List[float], q: float) -> Optional[float]:
 
 @dataclass(frozen=True)
 class RunSummary:
+    scenario: str
     run_name: str
     scheduler: str
     seed: int
     n_created: int
     n_finished: int
+    n_dropped: int
     n_success: int
     success_rate: float
+    throughput_per_s: float
+
+    # Failure breakdown
+    miss_uplink: int
+    miss_queue: int
+    miss_cpu: int
+    miss_coverage: int
 
     # Priority split
     high_thr: float
@@ -42,7 +51,7 @@ class RunSummary:
     p95_response_time_s: Optional[float]
     p99_response_time_s: Optional[float]
 
-    # Margin / slack style score (only for success)
+    # Margin (only for success)
     mean_margin: Optional[float]
 
     # Utility (success * (priority + beta*margin))
@@ -52,37 +61,42 @@ class RunSummary:
 
 
 def _task_margin(task: Task) -> Optional[float]:
-    """Margin in [0,1] where 1=very early, 0=just meets deadline.
-
-    margin = max(0, 1 - (response_time)/(allowed_time))
-    allowed_time = effective_deadline - created_t
-    """
-    if task.cpu_finish_t is None:
+    """Margin at CPU start: R_i(t_start) - C_i."""
+    if task.cpu_start_t is None:
         return None
-    allowed = task.effective_deadline_t - task.created_t
-    if allowed <= 0:
-        return 0.0
-    rt = task.cpu_finish_t - task.created_t
-    return max(0.0, 1.0 - (rt / allowed))
+    eff_start = task.meta.get("effective_deadline_at_start")
+    if eff_start is None:
+        return None
+    return float(eff_start) - float(task.cpu_start_t) - float(task.compute_time_s)
 
 
 def summarize_tasks(
     tasks: Iterable[Task],
+    scenario: str,
     run_name: str,
     scheduler: str,
     seed: int,
     high_thr: float,
     utility_beta: float = 0.5,
+    sim_duration_s: Optional[float] = None,
 ) -> RunSummary:
     tasks = list(tasks)
     created = [t for t in tasks if t.status in (TaskStatus.CREATED, TaskStatus.UL_IN_PROGRESS, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.FINISHED, TaskStatus.DEADLINE_MISS, TaskStatus.DROPPED)]
     finished = [t for t in tasks if t.status in (TaskStatus.FINISHED, TaskStatus.DEADLINE_MISS)]
+    dropped = [t for t in tasks if t.status == TaskStatus.DROPPED]
     success = [t for t in tasks if t.status == TaskStatus.FINISHED and (t.cpu_finish_t is not None) and (t.cpu_finish_t <= t.effective_deadline_t)]
 
     n_created = len(created) if created else len(tasks)
     n_finished = len(finished)
+    n_dropped = len(dropped)
     n_success = len(success)
     sr = (n_success / n_created) if n_created > 0 else 0.0
+    tp = (n_finished / sim_duration_s) if sim_duration_s else 0.0
+
+    miss_uplink = sum(1 for t in tasks if t.status == TaskStatus.DEADLINE_MISS and t.meta.get("miss_where") == "uplink")
+    miss_queue = sum(1 for t in tasks if t.status == TaskStatus.DEADLINE_MISS and t.meta.get("miss_where") == "queue")
+    miss_cpu = sum(1 for t in tasks if t.status == TaskStatus.DEADLINE_MISS and t.meta.get("miss_where") == "cpu")
+    miss_coverage = sum(1 for t in tasks if t.status == TaskStatus.DEADLINE_MISS and t.meta.get("miss_where") == "coverage")
 
     # High/Low split by threshold
     highs = [t for t in tasks if float(t.priority) >= high_thr]
@@ -126,13 +140,20 @@ def summarize_tasks(
     util_mean = util_sum / max(1, n_created)
 
     return RunSummary(
+        scenario=str(scenario),
         run_name=run_name,
         scheduler=scheduler,
         seed=seed,
         n_created=n_created,
         n_finished=n_finished,
+        n_dropped=n_dropped,
         n_success=n_success,
         success_rate=float(sr),
+        throughput_per_s=float(tp),
+        miss_uplink=int(miss_uplink),
+        miss_queue=int(miss_queue),
+        miss_cpu=int(miss_cpu),
+        miss_coverage=int(miss_coverage),
         high_thr=float(high_thr),
         high_success_rate=float(high_sr),
         low_success_rate=float(low_sr),
@@ -152,7 +173,9 @@ def write_summary_csv(summary: RunSummary, path: str) -> None:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     d = asdict(summary)
-    with p.open("w", encoding="utf-8", newline="") as f:
+    write_header = not p.exists()
+    with p.open("a", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(d.keys()))
-        w.writeheader()
+        if write_header:
+            w.writeheader()
         w.writerow(d)

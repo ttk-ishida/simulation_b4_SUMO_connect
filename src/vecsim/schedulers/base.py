@@ -26,8 +26,8 @@ def remaining_time(task: Task, now: float) -> float:
 
 
 def s_total(task: Task) -> float:
-    """Total service time if scheduled next: uplink + compute."""
-    return float(task.uplink_time_s + task.compute_time_s)
+    """Total service time if scheduled next: compute time only (uplink finished before enqueue)."""
+    return float(task.compute_time_s)
 
 
 def slack_next(task: Task, ctx: SchedulerContext) -> float:

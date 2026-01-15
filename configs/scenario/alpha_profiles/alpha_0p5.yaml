@@ -1,0 +1,14 @@
+sumo:
+  sumocfg_path: x_intersection_2lane/alpha_profiles/alpha_0p5/sumo.sumocfg
+  gui: false
+  additional_traci_cmd: []
+prediction:
+  inflow_estimator:
+    name: from_timeseries
+  inflow_timeseries:
+    path: x_intersection_2lane/alpha_profiles/alpha_0p5/n_true_series.csv
+    horizon_s: 60.0
+traffic_profile:
+  target_alpha: 0.5
+  mean_alpha: 0.4906042735001126
+  rate_veh_per_s: 2.8878097620464054

@@ -15,3 +15,6 @@ __pycache__/
 
 # results (必要なら)
 results/
+
+# generated alpha profiles
+scenarios/x_intersection_2lane/alpha_profiles/

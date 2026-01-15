@@ -18,7 +18,7 @@ from ..models.task import Task, TaskStatus
 from ..models.vehicle import Vehicle
 from ..prediction.alpha import alpha_from_rho, expected_compute_time_s, rho_future
 from ..prediction.candidates import select_candidate_vehicle_ids
-from ..prediction.inflow_estimator import expected_inflow_vehicles, lambda_task_hat
+from ..prediction.inflow_estimator import apply_inflow_error, expected_inflow_vehicles, lambda_task_hat
 from ..schedulers.base import SchedulerContext, s_total
 from ..schedulers.factory import make_scheduler
 from ..traffic.mu_schedule import mu_at_time, parse_mu_schedule
@@ -76,12 +76,31 @@ def build_sumo_cmd(cfg: Dict[str, Any]) -> List[str]:
 def _drop_expired_in_queue(queue: TaskQueue, now: float, rec: EventRecorder) -> None:
     keep: list[Task] = []
     for t in queue.tasks:
-        if now > t.effective_deadline_t:
+        if t.meta.get("coverage_out_t") is not None:
             t.status = TaskStatus.DEADLINE_MISS
+            t.meta["miss_where"] = "coverage"
+            rec.record(SimEvent(t=now, etype="DEADLINE_MISS", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"where": "coverage"}))
+        elif now > t.effective_deadline_t:
+            t.status = TaskStatus.DEADLINE_MISS
+            t.meta["miss_where"] = "queue"
             rec.record(SimEvent(t=now, etype="DEADLINE_MISS", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"where": "queue"}))
         else:
             keep.append(t)
     queue.tasks = keep
+
+
+def _update_task_deadline(task: Task, now: float, vehicle: Optional[Vehicle], rsu: RSU, cfg: Dict[str, Any]) -> None:
+    remain_deadline = float(task.deadline_t - now)
+    if vehicle is None:
+        stay_s = 0.0
+        task.meta["coverage_out_t"] = now
+    else:
+        stay_s = float(vehicle.estimate_remaining_stay_time(rsu, cfg))
+        if not vehicle.in_coverage:
+            task.meta["coverage_out_t"] = now
+    task.stay_deadline_t = now + max(0.0, stay_s)
+    eff_remain = min(remain_deadline, stay_s)
+    task.effective_deadline_t = now + max(0.0, eff_remain)
 
 
 def _maybe_drop_impossible_next(queue: TaskQueue, mec: MECServer, now: float, rec: EventRecorder, enabled: bool) -> None:
@@ -107,9 +126,13 @@ def run_once(args: RunArgs) -> int:
     cfg = _resolve_paths(cfg)
 
     # 2) Seed / RNG
-    seed = int(cfg.get("sim", {}).get("seed", 0))
+    sim_cfg = cfg.get("sim", {}) or {}
+    seed = int(sim_cfg.get("seed", 0))
+    task_seed = int(sim_cfg.get("task_seed", seed))
+    noise_seed = int(sim_cfg.get("noise_seed", seed))
     set_global_seed(seed)
-    rng = np.random.default_rng(seed)
+    rng_task = np.random.default_rng(task_seed)
+    rng_pred = np.random.default_rng(noise_seed)
 
     # 3) Sim clock
     step_length = float(cfg.get("sim", {}).get("step_length_s", 0.2))
@@ -119,11 +142,16 @@ def run_once(args: RunArgs) -> int:
 
     # 4) Entities: RSU, MEC, Scheduler
     rsu_cfg = cfg.get("rsu", {}) or {}
+    rect_cfg = (rsu_cfg.get("coverage_rect", {}) or {})
+    half_w = rect_cfg.get("half_width_m", None)
+    half_h = rect_cfg.get("half_height_m", None)
     rsu = RSU(
         rsu_id=str(rsu_cfg.get("id", "rsu0")),
         x_m=float(rsu_cfg.get("x_m", 0.0)),
         y_m=float(rsu_cfg.get("y_m", 0.0)),
         coverage_radius_m=float(rsu_cfg.get("coverage_radius_m", 250.0)),
+        coverage_half_width_m=float(half_w) if half_w is not None else None,
+        coverage_half_height_m=float(half_h) if half_h is not None else None,
     )
 
     mec_cfg = cfg.get("mec", {}) or {}
@@ -134,7 +162,7 @@ def run_once(args: RunArgs) -> int:
     sched_params = (cfg.get("scheduler", {}) or {}).get("params", {}) or {}
 
     # 5) Traffic/task generation
-    tf = TaskFactory(cfg=cfg, rng=rng)
+    tf = TaskFactory(cfg=cfg, rng=rng_task)
     default_mu = float((cfg.get("task_generation", {}) or {}).get("mu_tasks_per_s_per_vehicle", 0.05))
     mu_schedule = parse_mu_schedule(cfg)  # from scenario burst config
     # 6) Prediction for alpha(t)
@@ -152,12 +180,14 @@ def run_once(args: RunArgs) -> int:
     raw_dir.mkdir(parents=True, exist_ok=True)
     summary_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"events_{run_name}_{scheduler.name}_seed{seed}_{timestamp}.jsonl"
-    summary_path = summary_dir / f"summary_{run_name}_{scheduler.name}_seed{seed}_{timestamp}.csv"
+    scenario_tag = str(args.scenario_config_path or "no_scenario").replace("/", "__")
+    summary_path = summary_dir / f"summary_{run_name}_{scheduler.name}_{scenario_tag}.csv"
 
     utility_beta = float(out_cfg.get("utility_beta", 0.5))
 
     # Admission rule
     drop_impossible = bool((((mec_cfg.get("queue", {}) or {}).get("admission", {}) or {}).get("drop_if_impossible_next", True)))
+    drop_impossible_scheds = {"v_edf"}
 
     # 8) State containers
     vehicles: dict[str, Vehicle] = {}
@@ -185,7 +215,7 @@ def run_once(args: RunArgs) -> int:
             # Update snapshots
             for vid in list(vehicles.keys()):
                 snap = traci.get_vehicle_snapshot(vid)
-                vehicles[vid].update_state(snap.x_m, snap.y_m, snap.speed_mps, now, rsu)
+                vehicles[vid].update_state(snap.x_m, snap.y_m, snap.speed_mps, snap.heading_deg, now, rsu)
 
             # --- Task generation rate mu(t) ---
             mu = mu_at_time(default_mu=default_mu, schedule=mu_schedule, now_s=now)
@@ -194,13 +224,13 @@ def run_once(args: RunArgs) -> int:
             for v in vehicles.values():
                 if not v.in_coverage:
                     continue
-                if poisson_event(rate_per_s=mu, dt_s=step_length, rng=rng):
-                    # Remaining stay time estimate (stub now; replace later)
-                    stay_s = v.estimate_remaining_stay_time(now, default_s=horizon_s)
+                if poisson_event(rate_per_s=mu, dt_s=step_length, rng=rng_task):
+                    # Remaining stay time estimate (straight-line approximation)
+                    stay_s = v.estimate_remaining_stay_time(rsu, cfg)
                     task = tf.make_task(vehicle_id=v.veh_id, now=now, predicted_stay_s=stay_s, mec_cpu_freq_hz=mec.cpu_freq_hz)
 
                     # Uplink time (explicitly modeled)
-                    t_ul = compute_uplink_time_for_task(cfg, v, rsu, task.input_bits, rng)
+                    t_ul = compute_uplink_time_for_task(cfg, v, rsu, task.input_bits, rng_task)
                     task.uplink_time_s = float(t_ul)
 
                     tasks[task.task_id] = task
@@ -210,18 +240,42 @@ def run_once(args: RunArgs) -> int:
                     task.status = TaskStatus.UL_IN_PROGRESS
                     in_transit.append(InTransit(task_id=task.task_id, ul_finish_t=now + task.uplink_time_s))
 
+            # --- Refresh effective deadlines based on current vehicle state ---
+            for t in tasks.values():
+                if t.status in (TaskStatus.FINISHED, TaskStatus.DEADLINE_MISS, TaskStatus.DROPPED):
+                    continue
+                v = vehicles.get(t.vehicle_id)
+                _update_task_deadline(t, now, v, rsu, cfg)
+
             # --- Uplink completion -> enqueue ---
             if in_transit:
                 still: list[InTransit] = []
                 for it in in_transit:
                     if it.ul_finish_t <= now:
                         t = tasks[it.task_id]
+                        if t.meta.get("coverage_out_t") is not None:
+                            t.status = TaskStatus.DEADLINE_MISS
+                            t.meta["miss_where"] = "coverage"
+                            rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id))
+                            rec.record(SimEvent(t=now, etype="DEADLINE_MISS", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"where": "coverage"}))
+                            continue
                         # If already missed deadline by uplink completion, mark miss
                         if now > t.effective_deadline_t:
                             t.status = TaskStatus.DEADLINE_MISS
+                            t.meta["miss_where"] = "uplink"
                             rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id))
                             rec.record(SimEvent(t=now, etype="DEADLINE_MISS", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"where": "uplink"}))
                             continue
+
+                        # Optional drop-before-enqueue for specific schedulers
+                        if drop_impossible and scheduler.name in drop_impossible_scheds:
+                            R = t.effective_deadline_t - now
+                            need = mec.w0() + s_total(t)
+                            if R <= 0 or need > R:
+                                t.status = TaskStatus.DROPPED
+                                t.drop_reason = "impossible_if_next"
+                                rec.record(SimEvent(t=now, etype="DROPPED", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"reason": t.drop_reason}))
+                                continue
 
                         t.status = TaskStatus.READY
                         t.enqueued_t = now
@@ -234,14 +288,27 @@ def run_once(args: RunArgs) -> int:
 
             # --- Queue sanitation: expired/impossible ---
             _drop_expired_in_queue(queue, now, rec)
-            _maybe_drop_impossible_next(queue, mec, now, rec, enabled=drop_impossible)
+            _maybe_drop_impossible_next(queue, mec, now, rec, enabled=False)
 
             # --- Prediction alpha(t) ---
             cand_ids = select_candidate_vehicle_ids(vehicles, rsu, cfg)
-            exp_in = expected_inflow_vehicles(candidate_vehicle_ids=cand_ids, cfg=cfg, rng=rng)
-            lam_hat = lambda_task_hat(expected_inflow=exp_in, horizon_s=horizon_s, mu_tasks_per_s_per_vehicle=mu)
-            rho = rho_future(lam_hat, e_comp_s)
-            alpha = alpha_from_rho(rho)
+            exp_in_true = expected_inflow_vehicles(
+                candidate_vehicle_ids=cand_ids,
+                now_s=now,
+                horizon_s=horizon_s,
+                cfg=cfg,
+                rng=rng_pred,
+            )
+            exp_in_hat = apply_inflow_error(exp_in_true, cfg=cfg, rng=rng_pred)
+            lam_hat = lambda_task_hat(expected_inflow=exp_in_hat, horizon_s=horizon_s, mu_tasks_per_s_per_vehicle=mu)
+            mapping = (pred_cfg.get("alpha_mapping", {}) or {}).get("name", "sigmoid")
+            if mapping == "sigmoid_capacity":
+                cap_cfg = pred_cfg.get("capacity", {}) or {}
+                n_c = float(cap_cfg.get("n_c", 1.0))
+                rho = exp_in_hat / max(n_c, 1e-9)
+            else:
+                rho = rho_future(lam_hat, e_comp_s)
+            alpha = alpha_from_rho(rho, cfg=cfg)
 
             # --- Scheduler reorder ---
             if len(queue) > 1:
@@ -252,12 +319,21 @@ def run_once(args: RunArgs) -> int:
             if mec.is_idle():
                 started = mec.start_next_if_idle(now)
                 if started is not None:
+                    started.meta["effective_deadline_at_start"] = started.effective_deadline_t
                     rec.record(SimEvent(t=now, etype="CPU_STARTED", task_id=started.task_id, vehicle_id=started.vehicle_id))
 
             finished = mec.step(dt=step_length, now=now + step_length)
             if finished is not None:
-                if finished.cpu_finish_t is not None and finished.cpu_finish_t > finished.effective_deadline_t:
+                if finished.cpu_finish_t is not None:
+                    v = vehicles.get(finished.vehicle_id)
+                    _update_task_deadline(finished, finished.cpu_finish_t, v, rsu, cfg)
+                if finished.meta.get("coverage_out_t") is not None:
                     finished.status = TaskStatus.DEADLINE_MISS
+                    finished.meta["miss_where"] = "coverage"
+                    rec.record(SimEvent(t=finished.cpu_finish_t or (now + step_length), etype="DEADLINE_MISS", task_id=finished.task_id, vehicle_id=finished.vehicle_id, details={"where": "coverage"}))
+                elif finished.cpu_finish_t is not None and finished.cpu_finish_t > finished.effective_deadline_t:
+                    finished.status = TaskStatus.DEADLINE_MISS
+                    finished.meta["miss_where"] = "cpu"
                     rec.record(SimEvent(t=finished.cpu_finish_t, etype="DEADLINE_MISS", task_id=finished.task_id, vehicle_id=finished.vehicle_id, details={"where": "cpu"}))
                 else:
                     rec.record(SimEvent(t=finished.cpu_finish_t or (now + step_length), etype="CPU_FINISHED", task_id=finished.task_id, vehicle_id=finished.vehicle_id))
@@ -266,13 +342,16 @@ def run_once(args: RunArgs) -> int:
 
         # --- Persist raw + summary ---
         rec.dump_jsonl(str(raw_path))
+        scenario_name = args.scenario_config_path or ""
         summary = summarize_tasks(
             tasks=tasks.values(),
+            scenario=scenario_name,
             run_name=run_name,
             scheduler=scheduler.name,
             seed=seed,
             high_thr=high_thr,
             utility_beta=utility_beta,
+            sim_duration_s=duration_s,
         )
         write_summary_csv(summary, str(summary_path))
 

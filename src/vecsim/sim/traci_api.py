@@ -13,6 +13,7 @@ class VehicleSnapshot:
     x_m: float
     y_m: float
     speed_mps: float
+    heading_deg: float
 
 
 class TraciAPI:
@@ -52,7 +53,14 @@ class TraciAPI:
     def get_vehicle_snapshot(self, veh_id: str) -> VehicleSnapshot:
         x, y = self._traci.vehicle.getPosition(veh_id)
         v = self._traci.vehicle.getSpeed(veh_id)
-        return VehicleSnapshot(veh_id=veh_id, x_m=float(x), y_m=float(y), speed_mps=float(v))
+        ang = self._traci.vehicle.getAngle(veh_id)
+        return VehicleSnapshot(
+            veh_id=veh_id,
+            x_m=float(x),
+            y_m=float(y),
+            speed_mps=float(v),
+            heading_deg=float(ang),
+        )
 
     def get_all_vehicle_ids(self) -> List[str]:
         return list(self._traci.vehicle.getIDList())

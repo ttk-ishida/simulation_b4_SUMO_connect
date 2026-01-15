@@ -1,0 +1,18 @@
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+
+  <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="5.0" minGap="2.5" maxSpeed="13.9"/>
+
+  <!-- Straight routes -->
+  <route id="W_to_E" edges="w2c c2e"/>
+  <route id="E_to_W" edges="e2c c2w"/>
+  <route id="S_to_N" edges="s2c c2n"/>
+  <route id="N_to_S" edges="n2c c2s"/>
+
+  <!-- Saturation traffic: high inflow for N_C estimation -->
+  <flow id="flow_WE" type="car" route="W_to_E" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_EW" type="car" route="E_to_W" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_SN" type="car" route="S_to_N" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_NS" type="car" route="N_to_S" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+
+</routes>

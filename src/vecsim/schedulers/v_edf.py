@@ -11,9 +11,9 @@ from ..models.task import Task
 class VEDFScheduler:
     """Single-core simplification of V-EDF style ranking.
 
-    Default: priority desc, then effective deadline asc.
+    Default: deadline asc, then priority desc.
     """
     name: str = "v_edf"
 
     def rank(self, tasks: List[Task], ctx: SchedulerContext) -> List[Task]:
-        return sorted(tasks, key=lambda t: (-t.priority, t.effective_deadline_t))
+        return sorted(tasks, key=lambda t: (t.deadline_t, -t.priority))

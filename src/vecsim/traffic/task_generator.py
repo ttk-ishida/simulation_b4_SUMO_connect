@@ -84,6 +84,7 @@ class TaskFactory:
             task_id=task_id,
             vehicle_id=vehicle_id,
             created_t=now,
+            relative_deadline_s=float(rel_deadline),
             deadline_t=deadline_t,
             stay_deadline_t=stay_deadline_t,
             effective_deadline_t=eff_deadline_t,

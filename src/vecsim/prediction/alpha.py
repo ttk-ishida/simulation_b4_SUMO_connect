@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+import math
+
 from ..traffic.task_size_dist import expected_cycles
 
 
@@ -18,7 +20,12 @@ def rho_future(lambda_task_hat_per_s: float, e_compute_time_s: float) -> float:
     return float(max(0.0, lambda_task_hat_per_s) * max(0.0, e_compute_time_s))
 
 
-def alpha_from_rho(rho: float) -> float:
-    """alpha = rho / (1 + rho), mapping to (0,1)."""
+def alpha_from_rho(rho: float, cfg: Dict[str, Any] | None = None) -> float:
+    """Map rho to alpha via a configurable sigmoid."""
     rho = max(0.0, float(rho))
-    return float(rho / (1.0 + rho))
+    pred = (cfg or {}).get("prediction", {}) or {}
+    mapping = pred.get("alpha_mapping", {}) or {}
+    params = mapping.get("params", {}) or {}
+    a = float(params.get("a", 8.0))
+    b = float(params.get("b", 0.75))
+    return float(1.0 / (1.0 + math.exp(-a * (rho - b))))

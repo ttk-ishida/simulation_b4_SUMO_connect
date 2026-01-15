@@ -1,2 +1,0 @@
-run_name,scheduler,seed,n_created,n_finished,n_success,success_rate,high_thr,high_success_rate,low_success_rate,weighted_success_sum,weighted_success_norm,mean_response_time_s,p95_response_time_s,p99_response_time_s,mean_margin,utility_beta,utility_sum,utility_mean_per_task
-dev,fifo,42,2013,1144,119,0.05911574764033781,0.7,0.041666666666666664,0.059326294620412265,33.05144864999436,0.05807520937909186,0.8941176470588219,1.599999999999966,1.6000000000000227,0.5610332753911431,0.5,66.4329285357674,0.03300195158259682

@@ -1,0 +1,5 @@
+scheduler:
+  name: "prediction_aware"
+  params:
+    eps: 1.0e-9
+    horizon_s: 60.0

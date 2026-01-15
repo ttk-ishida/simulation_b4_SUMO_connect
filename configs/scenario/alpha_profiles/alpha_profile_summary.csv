@@ -1,0 +1,10 @@
+target_alpha,rate_veh_per_s,mean_alpha,routes_path,sumocfg_path,scenario_path
+0.1,0.9316720715931224,0.09181675305581756,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p1/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p1/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p1.yaml
+0.2,1.6760343108200606,0.21737599160416946,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p2/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p2/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p2.yaml
+0.3,2.160321695831205,0.3133314458574311,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p3/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p3/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p3.yaml
+0.4,2.5998808751716203,0.41695183671424063,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p4/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p4/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p4.yaml
+0.5,2.8878097620464054,0.4906042735001126,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p5/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p5/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p5.yaml
+0.6,3.398925773389556,0.6111176268767804,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p6/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p6/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p6.yaml
+0.7,3.7881978938817227,0.702768460455045,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p7/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p7/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p7.yaml
+0.8,5.166710315840992,0.8593976431314271,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p8/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p8/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p8.yaml
+0.9,8.0,0.8586712260592203,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p9/routes.rou.xml,scenarios/x_intersection_2lane/alpha_profiles/alpha_0p9/sumo.sumocfg,configs/scenario/alpha_profiles/alpha_0p9.yaml

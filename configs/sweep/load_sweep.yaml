@@ -10,5 +10,6 @@ sweep:
   seeds: [11, 12, 13]
 
   grid:
+    prediction.inflow_estimator.name: ["synthetic_from_edges"]
     prediction.horizon_s: [2.0, 5.0, 10.0]
     prediction.inflow_estimator.params.base_entry_prob: [0.2, 0.35, 0.5]
