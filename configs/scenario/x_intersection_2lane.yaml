@@ -19,4 +19,4 @@ prediction:
     name: "from_profile"
   inflow_profile:
     segments:
-      - { t_start_s: 0, t_end_s: 600, rate_veh_per_s: 0.2 }
+      - { t_start_s: 0, t_end_s: 1800, rate_veh_per_s: 0.2 }

@@ -9,7 +9,7 @@ burst:
   mu_schedule:
     - { t_start_s: 0,   t_end_s: 200, mu: 0.05 }
     - { t_start_s: 200, t_end_s: 320, mu: 0.05 }   # burst window
-    - { t_start_s: 320, t_end_s: 600, mu: 0.05 }
+    - { t_start_s: 320, t_end_s: 1800, mu: 0.05 }
 
 prediction:
   inflow_estimator:
@@ -18,4 +18,4 @@ prediction:
     segments:
       - { t_start_s: 0, t_end_s: 200, rate_veh_per_s: 0.2 }
       - { t_start_s: 200, t_end_s: 320, rate_veh_per_s: 0.4 }
-      - { t_start_s: 320, t_end_s: 600, rate_veh_per_s: 0.2 }
+      - { t_start_s: 320, t_end_s: 1800, rate_veh_per_s: 0.2 }

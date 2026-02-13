@@ -28,7 +28,7 @@ sim:
   task_seed: 42            # RNG for task attributes + uplink randomness
   noise_seed: 42           # RNG for prediction error (N_hat)
   step_length_s: 0.2          # SUMO/TraCI time step length
-  duration_s: 600             # total simulation time
+  duration_s: 1800             # total simulation time
   warmup_s: 0                 # optional warmup period (ignored in metrics)
   log_level: "INFO"
 
@@ -42,10 +42,10 @@ rsu:
   id: "rsu0"
   x_m: 500.0
   y_m: 500.0
-  coverage_radius_m: 1000.0
+  coverage_radius_m: 500.0
 
 mec:
-  cpu_freq_hz: 1.5e10        # 10 GHz single core
+  cpu_freq_hz: 15.0e9        # 10 GHz single core
   non_preemptive: true
   queue:
     max_len: 1000000          # big number => practically unbounded
@@ -55,7 +55,8 @@ mec:
 
 task_generation:
   # Per-vehicle Poisson task generation rate (tasks/s/vehicle)
-  mu_tasks_per_s_per_vehicle: 1.0
+  mu_tasks_per_s_per_vehicle: 0.015
+  burst_size: 2.0
   # Input data size distribution for uplink [bit]
   input_bits_dist:
     name: "uniform"
@@ -84,6 +85,11 @@ priority:
     params:
       a: 1.0
       b: 1.0
+  # Discrete option example:
+  #model:
+  #   name: "discrete"
+  #   params:
+  #     step: 0.1
   # Optional: define "high priority" threshold for counting high arrivals (used in prediction)
   high_threshold: 0.7
 
@@ -120,14 +126,14 @@ prediction:
   inflow_profile:
     # Piecewise inflow rate [veh/s] for N_true(t, Δ) calculation.
     segments:
-      - { t_start_s: 0, t_end_s: 600, rate_veh_per_s: 0.2 }
+      - { t_start_s: 0, t_end_s: 1800, rate_veh_per_s: 0.2 }
   inflow_timeseries:
     # Optional: CSV with columns t_s,n_true,alpha_true (n_true counts in [t, t+Δ]).
     path: ""
     horizon_s: 60.0
   # N_hat = N_true * (1 + e), e ~ Uniform[-sigma, +sigma] by default.
   error:
-    sigma: 0.0
+    sigma: 0.60
     dist: "uniform"
   capacity:
     # N_C: max concurrent vehicles within coverage (from SUMO saturation test).
@@ -145,6 +151,6 @@ logging:
   record_vehicle_traces: false
 
 output:
-  run_name: "alpha_sigma0p00"
+  run_name: "alpha_sigma0p60"
   save_dir: "results/raw"
   summary_dir: "results/summaries"

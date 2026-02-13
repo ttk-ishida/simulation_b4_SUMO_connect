@@ -10,9 +10,9 @@
   <route id="N_to_S" edges="n2c c2s"/>
 
   <!-- Saturation traffic: high inflow for N_C estimation -->
-  <flow id="flow_WE" type="car" route="W_to_E" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
-  <flow id="flow_EW" type="car" route="E_to_W" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
-  <flow id="flow_SN" type="car" route="S_to_N" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
-  <flow id="flow_NS" type="car" route="N_to_S" begin="0" end="600" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_WE" type="car" route="W_to_E" begin="0" end="1800" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_EW" type="car" route="E_to_W" begin="0" end="1800" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_SN" type="car" route="S_to_N" begin="0" end="1800" vehsPerHour="7200" departLane="random" departSpeed="max"/>
+  <flow id="flow_NS" type="car" route="N_to_S" begin="0" end="1800" vehsPerHour="7200" departLane="random" departSpeed="max"/>
 
 </routes>

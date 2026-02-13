@@ -10,5 +10,5 @@ prediction:
     horizon_s: 60.0
 traffic_profile:
   target_alpha: 0.1
-  mean_alpha: 0.10962151664946942
-  rate_veh_per_s: 1.4369326755815275
+  mean_alpha: 0.09181675305581756
+  rate_veh_per_s: 0.9316720715931224

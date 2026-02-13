@@ -24,6 +24,7 @@ class RunSummary:
     run_name: str
     scheduler: str
     seed: int
+    alpha_true_mean: Optional[float]
     n_created: int
     n_finished: int
     n_dropped: int
@@ -45,6 +46,7 @@ class RunSummary:
     # Weighted success (continuous priority in [0,1])
     weighted_success_sum: float
     weighted_success_norm: float  # divide by sum of priorities
+    alpha_true_weighted_success_norm: Optional[float]
 
     # Timings
     mean_response_time_s: Optional[float]
@@ -79,6 +81,7 @@ def summarize_tasks(
     high_thr: float,
     utility_beta: float = 0.5,
     sim_duration_s: Optional[float] = None,
+    alpha_true_mean: Optional[float] = None,
 ) -> RunSummary:
     tasks = list(tasks)
     created = [t for t in tasks if t.status in (TaskStatus.CREATED, TaskStatus.UL_IN_PROGRESS, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.FINISHED, TaskStatus.DEADLINE_MISS, TaskStatus.DROPPED)]
@@ -115,6 +118,25 @@ def summarize_tasks(
     sum_p = sum(float(t.priority) for t in tasks)
     sum_p_succ = sum(float(t.priority) for t in success)
     w_norm = (sum_p_succ / sum_p) if sum_p > 0 else 0.0
+    a_weighted = None
+    if tasks:
+        alpha_vals = []
+        for t in tasks:
+            a = t.meta.get("alpha_true_at_create")
+            alpha_vals.append(a if a is not None else alpha_true_mean)
+        if any(a is not None for a in alpha_vals):
+            total_w = 0.0
+            succ_w = 0.0
+            for t, a in zip(tasks, alpha_vals):
+                if a is None:
+                    continue
+                a = max(0.0, min(1.0, float(a)))
+                w = (1.0 - a) + a * float(t.priority)
+                total_w += w
+                if t.status == TaskStatus.FINISHED and (t.cpu_finish_t is not None) and (t.cpu_finish_t <= t.effective_deadline_t):
+                    succ_w += w
+            if total_w > 0:
+                a_weighted = succ_w / total_w
 
     # Latency
     rts = [float(t.cpu_finish_t - t.created_t) for t in finished if t.cpu_finish_t is not None]
@@ -144,6 +166,7 @@ def summarize_tasks(
         run_name=run_name,
         scheduler=scheduler,
         seed=seed,
+        alpha_true_mean=alpha_true_mean,
         n_created=n_created,
         n_finished=n_finished,
         n_dropped=n_dropped,
@@ -159,6 +182,7 @@ def summarize_tasks(
         low_success_rate=float(low_sr),
         weighted_success_sum=float(sum_p_succ),
         weighted_success_norm=float(w_norm),
+        alpha_true_weighted_success_norm=a_weighted,
         mean_response_time_s=mean_rt,
         p95_response_time_s=p95,
         p99_response_time_s=p99,
