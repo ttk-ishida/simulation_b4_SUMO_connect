@@ -1,0 +1,26 @@
+# Alpha change profiles (exp3 v2): 4 profiles x schedulers x seeds
+sweep:
+  name: "alpha_change_exp3_v2"
+  base_config: "configs/base.yaml"
+  scenario_configs:
+    - "configs/scenario/alpha_change_exp3_v2/alpha_mid_high_to_low.yaml"
+    - "configs/scenario/alpha_change_exp3_v2/alpha_mid_low_to_high.yaml"
+    - "configs/scenario/alpha_change_exp3_v2/alpha_alternate_300.yaml"
+    # - "configs/scenario/alpha_change_exp3_v2/alpha_random_300.yaml"
+
+  scheduler_configs:
+    - "configs/scheduler/fifo.yaml"
+    - "configs/scheduler/edf.yaml"
+    - "configs/scheduler/e_edf.yaml"
+    - "configs/scheduler/priority.yaml"
+    - "configs/scheduler/v_edf.yaml"
+    - "configs/scheduler/pred_aware.yaml"
+    - "configs/scheduler/prediction_aware.yaml"
+
+  runs_per_point: 1
+  seeds:
+    - 1
+
+  grid:
+    sumo.gui:
+      - true

@@ -14,7 +14,7 @@ import csv
 import numpy as np
 
 from ..metrics.recorder import EventRecorder
-from ..metrics.summary import summarize_tasks, write_summary_csv
+from ..metrics.summary import summarize_tasks, summarize_tasks_windowed, write_summary_csv, write_summary_rows_csv
 from ..models.mec_server import MECServer
 from ..models.queue import TaskQueue
 from ..models.rsu import RSU
@@ -568,6 +568,26 @@ def run_once(args: RunArgs) -> int:
             alpha_true_mean=alpha_true_mean,
         )
         write_summary_csv(summary, str(summary_path))
+
+        window_cfg = out_cfg.get("windowed_summary", {}) or {}
+        if bool(window_cfg.get("enabled", False)):
+            window_s = float(window_cfg.get("window_s", 60.0))
+            step_s = float(window_cfg.get("step_s", window_s))
+            window_rows = summarize_tasks_windowed(
+                tasks=tasks.values(),
+                events=rec.events,
+                window_s=window_s,
+                step_s=step_s,
+                scenario=scenario_name,
+                run_name=run_name,
+                scheduler=scheduler.name,
+                seed=seed,
+                high_thr=high_thr,
+                utility_beta=utility_beta,
+                sim_duration_s=duration_s,
+            )
+            window_path = summary_dir / f"summary_window_{run_name}_{scheduler.name}_{scenario_tag}.csv"
+            write_summary_rows_csv(window_rows, str(window_path))
 
         log.info("Run finished. Raw events: %s", raw_path)
         log.info("Run summary: %s", summary_path)

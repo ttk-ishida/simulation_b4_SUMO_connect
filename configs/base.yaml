@@ -25,18 +25,18 @@ paths:
 
 sim:
   seed: 42
-  task_seed: 42            # RNG for task attributes + uplink randomness
-  noise_seed: 42           # RNG for prediction error (N_hat)
-  step_length_s: 0.2          # SUMO/TraCI time step length
-  duration_s: 1800             # total simulation time
-  warmup_s: 0                 # optional warmup period (ignored in metrics)
+  task_seed: 42 # RNG for task attributes + uplink randomness
+  noise_seed: 42 # RNG for prediction error (N_hat)
+  step_length_s: 0.2 # SUMO/TraCI time step length
+  duration_s: 1800 # total simulation time
+  warmup_s: 0 # optional warmup period (ignored in metrics)
   log_level: "INFO"
 
 sumo:
-  gui: false
+  gui: true
   # scenario config should set sumocfg_path (relative to scenario_dir)
   sumocfg_path: null
-  additional_traci_cmd: []    # extra SUMO cmd args, if needed
+  additional_traci_cmd: [] # extra SUMO cmd args, if needed
 
 rsu:
   id: "rsu0"
@@ -45,18 +45,18 @@ rsu:
   coverage_radius_m: 500.0
 
 mec:
-  cpu_freq_hz: 15.0e9        # 10 GHz single core
+  cpu_freq_hz: 1.5e10 # 10 GHz single core
   non_preemptive: true
   queue:
-    max_len: 1000000          # big number => practically unbounded
+    max_len: 1000000 # big number => practically unbounded
     admission:
       # If true, drop tasks that are impossible even if scheduled next.
       drop_if_impossible_next: true
 
 task_generation:
   # Per-vehicle Poisson task generation rate (tasks/s/vehicle)
-  mu_tasks_per_s_per_vehicle: 0.015
-  burst_size: 2.0
+  mu_tasks_per_s_per_vehicle: 0.012
+  burst_size: 1.0
   # Input data size distribution for uplink [bit]
   input_bits_dist:
     name: "uniform"
@@ -85,11 +85,6 @@ priority:
     params:
       a: 1.0
       b: 1.0
-  # Discrete option example:
-  #model:
-  #   name: "discrete"
-  #   params:
-  #     step: 0.1
   # Optional: define "high priority" threshold for counting high arrivals (used in prediction)
   high_threshold: 0.7
 
@@ -98,7 +93,7 @@ comm:
     enabled: true
     # rate model: "fixed" or "shannon"
     rate_model: "fixed"
-    fixed_rate_bps: 8.0e6     # used only if rate_model=fixed
+    fixed_rate_bps: 8.0e6 # used only if rate_model=fixed
     shannon:
       bandwidth_hz: 10.0e6
       tx_power_w: 0.2
@@ -110,7 +105,7 @@ comm:
           pl0_db: 60.0
           d0_m: 1.0
           n: 2.7
-          shadow_sigma_db: 0.0   # set >0 if you want randomness
+          shadow_sigma_db: 0.0 # set >0 if you want randomness
 
 prediction:
   # Prediction horizon used to estimate inflow and future load
@@ -118,7 +113,7 @@ prediction:
   # If you don't implement real trajectory prediction, use a synthetic inflow model.
   # The estimator should output expected number of incoming vehicles within horizon.
   inflow_estimator:
-    name: "from_profile"   # or "synthetic_from_edges"
+    name: "from_profile" # or "synthetic_from_edges"
     params:
       # Used only by the synthetic estimator; scenario may override.
       base_entry_prob: 0.3
@@ -126,14 +121,14 @@ prediction:
   inflow_profile:
     # Piecewise inflow rate [veh/s] for N_true(t, Δ) calculation.
     segments:
-      - { t_start_s: 0, t_end_s: 1800, rate_veh_per_s: 0.2 }
+      - { t_start_s: 0, t_end_s: 600, rate_veh_per_s: 0.2 }
   inflow_timeseries:
     # Optional: CSV with columns t_s,n_true,alpha_true (n_true counts in [t, t+Δ]).
     path: ""
     horizon_s: 60.0
   # N_hat = N_true * (1 + e), e ~ Uniform[-sigma, +sigma] by default.
   error:
-    sigma: 0.60
+    sigma: 0.05
     dist: "uniform"
   capacity:
     # N_C: max concurrent vehicles within coverage (from SUMO saturation test).
@@ -147,10 +142,10 @@ prediction:
 
 logging:
   record_raw_events: true
-  raw_format: "jsonl"      # jsonl or csv
+  raw_format: "jsonl" # jsonl or csv
   record_vehicle_traces: false
 
 output:
-  run_name: "alpha_sigma0p60"
+  run_name: "alpha_sigma0p05"
   save_dir: "results/raw"
   summary_dir: "results/summaries"
