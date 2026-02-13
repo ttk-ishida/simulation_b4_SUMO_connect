@@ -15,11 +15,11 @@ sweep:
     - "configs/scenario/alpha_profiles/alpha_0p9.yaml"
     # - "configs/scenario/alpha_profiles/alpha_1p0.yaml"
   scheduler_configs:
-    # - "configs/scheduler/fifo.yaml"
-    # - "configs/scheduler/edf.yaml"
-    - "configs/scheduler/e_edf.yaml"
-    - "configs/scheduler/priority.yaml"
-    # - "configs/scheduler/v_edf.yaml"
+    #- "configs/scheduler/fifo.yaml"
+    #- "configs/scheduler/edf.yaml"
+    #- "configs/scheduler/e_edf.yaml"
+    #- "configs/scheduler/priority.yaml"
+    #- "configs/scheduler/v_edf.yaml"
     # - "configs/scheduler/pred_aware.yaml"
     - "configs/scheduler/prediction_aware.yaml"
 

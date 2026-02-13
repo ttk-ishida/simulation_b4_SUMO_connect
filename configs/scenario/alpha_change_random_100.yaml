@@ -1,0 +1,16 @@
+# Exp3 pattern 4: alpha changes randomly every 100s (fixed seed)
+
+sumo:
+  sumocfg_path: "x_intersection_2lane/sumo.sumocfg"
+  gui: false
+  additional_traci_cmd: []
+
+prediction:
+  inflow_estimator:
+    name: "from_timeseries"
+  inflow_timeseries:
+    path: "scenarios/x_intersection_2lane/alpha_change_exp3/alpha_random_100_n_true.csv"
+    horizon_s: 60.0
+
+traffic_profile:
+  notes: "alpha random in [0.1,0.9] every 100s (seed=42)"

@@ -77,6 +77,8 @@ class TaskFactory:
         deadline_t = now + rel_deadline
         stay_deadline_t = now + float(predicted_stay_s)
         eff_deadline_t = min(deadline_t, stay_deadline_t)
+        # eff_deadline_t = deadline_t
+
 
         compute_time_s = float(cycles / mec_cpu_freq_hz)
 

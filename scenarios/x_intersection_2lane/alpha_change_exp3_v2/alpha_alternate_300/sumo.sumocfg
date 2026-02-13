@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+  <input>
+    <net-file value="/Users/tatsukiishida/simulation_parallel_b4/simulation_b4_SUMO_connect/scenarios/x_intersection_2lane/net.net.xml" />
+    <route-files value="/Users/tatsukiishida/simulation_parallel_b4/simulation_b4_SUMO_connect/scenarios/x_intersection_2lane/alpha_change_exp3_v2/alpha_alternate_300/routes.rou.xml" />
+    <additional-files value="/Users/tatsukiishida/simulation_parallel_b4/simulation_b4_SUMO_connect/scenarios/x_intersection_2lane/add.add.xml" />
+  </input>
+
+  <time>
+    <begin value="0" />
+    <end value="1800.000" />
+    <step-length value="0.200" />
+  </time>
+
+  <report>
+    <verbose value="false" />
+    <no-step-log value="true" />
+  </report>
+
+</configuration>

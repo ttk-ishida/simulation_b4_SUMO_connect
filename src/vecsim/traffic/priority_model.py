@@ -24,5 +24,12 @@ def sample_priority(model_cfg: Dict[str, Any], rng: np.random.Generator) -> floa
         low = float(params.get("low", 0.2))
         high = float(params.get("high", 0.9))
         return high if (rng.random() < p_high) else low
+    if name == "discrete":
+        step = float(params.get("step", 0.1))
+        if step <= 0:
+            raise ValueError("priority step must be > 0")
+        k_max = int(round(1.0 / step))
+        k = int(rng.integers(0, k_max + 1))
+        return float(min(1.0, k * step))
 
     raise ValueError(f"Unknown priority model: {name}")
