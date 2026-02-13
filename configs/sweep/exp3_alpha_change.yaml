@@ -1,0 +1,20 @@
+# Experiment 3: time-varying alpha patterns (600s)
+sweep:
+  name: "exp3_alpha_change"
+  base_config: "configs/base.yaml"
+  scenario_configs:
+    - "configs/scenario/alpha_change_mid_high_to_low.yaml"
+    - "configs/scenario/alpha_change_mid_low_to_high.yaml"
+    - "configs/scenario/alpha_change_alternate_100.yaml"
+    - "configs/scenario/alpha_change_random_100.yaml"
+
+  scheduler_configs:
+    - "configs/scheduler/e_edf.yaml"
+    - "configs/scheduler/priority.yaml"
+    - "configs/scheduler/prediction_aware.yaml"
+
+  runs_per_point: 1
+  seeds:
+    - 1
+
+  grid: {}

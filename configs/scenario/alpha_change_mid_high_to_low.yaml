@@ -1,0 +1,16 @@
+# Exp3 pattern 1: alpha ~0.9 -> ~0.1 at mid time
+
+sumo:
+  sumocfg_path: "x_intersection_2lane/sumo.sumocfg"
+  gui: false
+  additional_traci_cmd: []
+
+prediction:
+  inflow_estimator:
+    name: "from_timeseries"
+  inflow_timeseries:
+    path: "scenarios/x_intersection_2lane/alpha_change_exp3/alpha_mid_high_to_low_n_true.csv"
+    horizon_s: 60.0
+
+traffic_profile:
+  notes: "alpha ~0.9 (0-300s) -> ~0.1 (300-600s)"

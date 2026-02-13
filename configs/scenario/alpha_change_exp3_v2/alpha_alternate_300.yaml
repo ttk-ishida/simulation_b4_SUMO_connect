@@ -1,0 +1,44 @@
+sumo:
+  sumocfg_path: x_intersection_2lane/alpha_change_exp3_v2/alpha_alternate_300/sumo.sumocfg
+  gui: false
+  additional_traci_cmd: []
+prediction:
+  inflow_estimator:
+    name: from_timeseries
+  inflow_timeseries:
+    path: x_intersection_2lane/alpha_change_exp3_v2/alpha_alternate_300/n_true_series.csv
+    horizon_s: 60.0
+traffic_profile:
+  notes: "generated exp3 profile: alpha_alternate_300"
+  mean_alpha: 0.49835046740534195
+  rate_veh_per_s_segments:
+    - t_start_s: 0.0
+      t_end_s: 300.0
+      alpha: 0.2
+      rate_veh_per_s: 2.1850233545154674
+    - t_start_s: 300.0
+      t_end_s: 600.0
+      alpha: 0.8
+      rate_veh_per_s: 4.159713339006555
+    - t_start_s: 600.0
+      t_end_s: 900.0
+      alpha: 0.2
+      rate_veh_per_s: 1.3122834264695011
+    - t_start_s: 900.0
+      t_end_s: 1200.0
+      alpha: 0.8
+      rate_veh_per_s: 4.53749815212797
+    - t_start_s: 1200.0
+      t_end_s: 1500.0
+      alpha: 0.2
+      rate_veh_per_s: 1.328022820984376
+    - t_start_s: 1500.0
+      t_end_s: 1800.0
+      alpha: 0.8
+      rate_veh_per_s: 4.18597403756515
+
+output:
+  windowed_summary:
+    enabled: true
+    window_s: 60.0
+    step_s: 10.0

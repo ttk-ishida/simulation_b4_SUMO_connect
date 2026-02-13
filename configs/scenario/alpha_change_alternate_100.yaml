@@ -1,0 +1,16 @@
+# Exp3 pattern 3: alpha alternates between low/high bands every 100s
+
+sumo:
+  sumocfg_path: "x_intersection_2lane/sumo.sumocfg"
+  gui: false
+  additional_traci_cmd: []
+
+prediction:
+  inflow_estimator:
+    name: "from_timeseries"
+  inflow_timeseries:
+    path: "scenarios/x_intersection_2lane/alpha_change_exp3/alpha_alternate_100_n_true.csv"
+    horizon_s: 60.0
+
+traffic_profile:
+  notes: "alpha in ~0.1-0.3 vs ~0.7-0.9 bands alternating every 100s"

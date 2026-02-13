@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import json
 import logging
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from bisect import bisect_right
+import csv
 
 import numpy as np
 
 from ..metrics.recorder import EventRecorder
-from ..metrics.summary import summarize_tasks, write_summary_csv
+from ..metrics.summary import summarize_tasks, summarize_tasks_windowed, write_summary_csv, write_summary_rows_csv
 from ..models.mec_server import MECServer
 from ..models.queue import TaskQueue
 from ..models.rsu import RSU
@@ -100,6 +104,7 @@ def _update_task_deadline(task: Task, now: float, vehicle: Optional[Vehicle], rs
             task.meta["coverage_out_t"] = now
     task.stay_deadline_t = now + max(0.0, stay_s)
     eff_remain = min(remain_deadline, stay_s)
+    # eff_remain = remain_deadline
     task.effective_deadline_t = now + max(0.0, eff_remain)
 
 
@@ -170,6 +175,29 @@ def run_once(args: RunArgs) -> int:
     horizon_s = float(sched_params.get("horizon_s", pred_cfg.get("horizon_s", 5.0)))
     e_comp_s = expected_compute_time_s(cfg)
     high_thr = float((cfg.get("priority", {}) or {}).get("high_threshold", 0.7))
+    alpha_true_series: Optional[Tuple[List[float], List[float]]] = None
+    ts_cfg = pred_cfg.get("inflow_timeseries", {}) or {}
+    ts_path = str(ts_cfg.get("path", ""))
+    if ts_path:
+        scenario_dir = Path(str((cfg.get("paths", {}) or {}).get("scenario_dir", "scenarios")))
+        full_path = scenario_dir / ts_path
+        times: List[float] = []
+        alpha_vals: List[float] = []
+        try:
+            with full_path.open("r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        t = float(row.get("t_s", ""))
+                        a = float(row.get("alpha_true", ""))
+                    except (TypeError, ValueError):
+                        continue
+                    times.append(t)
+                    alpha_vals.append(a)
+        except FileNotFoundError:
+            times, alpha_vals = [], []
+        if times and alpha_vals:
+            alpha_true_series = (times, alpha_vals)
 
     # 7) Outputs
     out_cfg = cfg.get("output", {}) or {}
@@ -180,6 +208,9 @@ def run_once(args: RunArgs) -> int:
     raw_dir.mkdir(parents=True, exist_ok=True)
     summary_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"events_{run_name}_{scheduler.name}_seed{seed}_{timestamp}.jsonl"
+    decision_path = raw_dir / f"decision_{run_name}_{scheduler.name}_seed{seed}_{timestamp}.jsonl"
+    candidate_path = raw_dir / f"candidates_{run_name}_{scheduler.name}_seed{seed}_{timestamp}.jsonl"
+    outcome_path = raw_dir / f"outcomes_{run_name}_{scheduler.name}_seed{seed}_{timestamp}.jsonl"
     scenario_tag = str(args.scenario_config_path or "no_scenario").replace("/", "__")
     summary_path = summary_dir / f"summary_{run_name}_{scheduler.name}_{scenario_tag}.csv"
 
@@ -196,6 +227,17 @@ def run_once(args: RunArgs) -> int:
 
     rec = EventRecorder()
     traci = TraciAPI()
+    log_rankings = scheduler.name in {"priority", "prediction_aware"}
+    decision_seq = 0
+    decision_by_task: dict[str, str] = {}
+    decision_alpha_by_task: dict[str, float] = {}
+    decision_t_by_task: dict[str, float] = {}
+    if log_rankings:
+        decision_f = decision_path.open("w", encoding="utf-8")
+        candidate_f = candidate_path.open("w", encoding="utf-8")
+        outcome_f = outcome_path.open("w", encoding="utf-8")
+    else:
+        decision_f = candidate_f = outcome_f = None
     sumo_cmd = build_sumo_cmd(cfg)
 
     log.info("Run start: scheduler=%s, steps=%d, dt=%.3f, duration=%.1f, seed=%d", scheduler.name, n_steps, step_length, duration_s, seed)
@@ -221,24 +263,35 @@ def run_once(args: RunArgs) -> int:
             mu = mu_at_time(default_mu=default_mu, schedule=mu_schedule, now_s=now)
 
             # --- Generate tasks (Poisson, only while in RSU coverage) ---
+            alpha_true_now = None
+            if alpha_true_series is not None:
+                times, vals = alpha_true_series
+                idx = max(0, bisect_right(times, float(now)) - 1)
+                alpha_true_now = float(vals[idx])
             for v in vehicles.values():
                 if not v.in_coverage:
                     continue
                 if poisson_event(rate_per_s=mu, dt_s=step_length, rng=rng_task):
+                    tg_cfg = cfg.get("task_generation", {}) or {}
+                    burst_size = int(tg_cfg.get("burst_size", 1))
+                    burst_size = max(1, burst_size)
                     # Remaining stay time estimate (straight-line approximation)
                     stay_s = v.estimate_remaining_stay_time(rsu, cfg)
-                    task = tf.make_task(vehicle_id=v.veh_id, now=now, predicted_stay_s=stay_s, mec_cpu_freq_hz=mec.cpu_freq_hz)
+                    for _ in range(burst_size):
+                        task = tf.make_task(vehicle_id=v.veh_id, now=now, predicted_stay_s=stay_s, mec_cpu_freq_hz=mec.cpu_freq_hz)
+                        if alpha_true_now is not None:
+                            task.meta["alpha_true_at_create"] = alpha_true_now
 
-                    # Uplink time (explicitly modeled)
-                    t_ul = compute_uplink_time_for_task(cfg, v, rsu, task.input_bits, rng_task)
-                    task.uplink_time_s = float(t_ul)
+                        # Uplink time (explicitly modeled)
+                        t_ul = compute_uplink_time_for_task(cfg, v, rsu, task.input_bits, rng_task)
+                        task.uplink_time_s = float(t_ul)
 
-                    tasks[task.task_id] = task
-                    rec.record(SimEvent(t=now, etype="TASK_CREATED", task_id=task.task_id, vehicle_id=task.vehicle_id))
-                    rec.record(SimEvent(t=now, etype="UL_STARTED", task_id=task.task_id, vehicle_id=task.vehicle_id))
+                        tasks[task.task_id] = task
+                        rec.record(SimEvent(t=now, etype="TASK_CREATED", task_id=task.task_id, vehicle_id=task.vehicle_id))
+                        rec.record(SimEvent(t=now, etype="UL_STARTED", task_id=task.task_id, vehicle_id=task.vehicle_id))
 
-                    task.status = TaskStatus.UL_IN_PROGRESS
-                    in_transit.append(InTransit(task_id=task.task_id, ul_finish_t=now + task.uplink_time_s))
+                        task.status = TaskStatus.UL_IN_PROGRESS
+                        in_transit.append(InTransit(task_id=task.task_id, ul_finish_t=now + task.uplink_time_s))
 
             # --- Refresh effective deadlines based on current vehicle state ---
             for t in tasks.values():
@@ -249,21 +302,72 @@ def run_once(args: RunArgs) -> int:
 
             # --- Uplink completion -> enqueue ---
             if in_transit:
+                ignore_ul_coverage = bool(cfg.get("sim", {}).get("ignore_ul_coverage", False))
+                def _ul_diag(t: Task, now_s: float) -> dict:
+                    stay_deadline_t = float(getattr(t, "stay_deadline_t", t.deadline_t))
+                    remain_deadline = float(t.deadline_t - now_s)
+                    remain_stay = float(stay_deadline_t - now_s)
+                    r_eff = min(remain_deadline, remain_stay)
+                    t_ul = float(t.uplink_time_s)
+                    c_s = float(t.compute_time_s)
+                    min_need = t_ul + c_s
+                    bottleneck = "deadline" if remain_deadline <= remain_stay else "stay"
+                    margin_s = r_eff - min_need
+                    v = vehicles.get(t.vehicle_id)
+                    speed_mps = float(v.speed_mps) if v is not None else None
+                    dist_to_exit_m = None
+                    if v is not None:
+                        rect = rsu.coverage_rect_bounds()
+                        theta = math.radians(float(v.heading_deg))
+                        dx = math.cos(theta)
+                        dy = math.sin(theta)
+                        if rect is not None:
+                            x_min, x_max, y_min, y_max = rect
+                            if abs(dx) >= abs(dy):
+                                d_out = (x_max - v.x_m) if dx >= 0 else (v.x_m - x_min)
+                            else:
+                                d_out = (y_max - v.y_m) if dy >= 0 else (v.y_m - y_min)
+                            dist_to_exit_m = max(0.0, float(d_out))
+                        else:
+                            fx = v.x_m - rsu.x_m
+                            fy = v.y_m - rsu.y_m
+                            b = fx * dx + fy * dy
+                            c = fx * fx + fy * fy - (rsu.coverage_radius_m ** 2)
+                            disc = b * b - c
+                            if disc > 0.0:
+                                t_out = -b + math.sqrt(disc)
+                                if t_out > 0.0:
+                                    dist_to_exit_m = float(t_out)
+                    return {
+                        "remain_deadline_raw_s": remain_deadline,
+                        "remain_stay_raw_s": remain_stay,
+                        "r_eff_s": float(max(0.0, r_eff)),
+                        "bottleneck": bottleneck,
+                        "t_ul_s": t_ul,
+                        "c_s": c_s,
+                        "min_need_s": min_need,
+                        "margin_s": margin_s,
+                        "feasible": bool(min_need <= r_eff),
+                        "speed_mps": speed_mps,
+                        "dist_to_exit_m": dist_to_exit_m,
+                    }
                 still: list[InTransit] = []
                 for it in in_transit:
                     if it.ul_finish_t <= now:
                         t = tasks[it.task_id]
-                        if t.meta.get("coverage_out_t") is not None:
+                        ul_details = _ul_diag(t, now)
+                        # NOTE: UL完了時のcoverage判定を一時的に無効化する場合はここをFalseにする。
+                        if False and (not ignore_ul_coverage) and t.meta.get("coverage_out_t") is not None:
                             t.status = TaskStatus.DEADLINE_MISS
                             t.meta["miss_where"] = "coverage"
-                            rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id))
+                            rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id, details=ul_details))
                             rec.record(SimEvent(t=now, etype="DEADLINE_MISS", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"where": "coverage"}))
                             continue
                         # If already missed deadline by uplink completion, mark miss
                         if now > t.effective_deadline_t:
                             t.status = TaskStatus.DEADLINE_MISS
                             t.meta["miss_where"] = "uplink"
-                            rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id))
+                            rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id, details=ul_details))
                             rec.record(SimEvent(t=now, etype="DEADLINE_MISS", task_id=t.task_id, vehicle_id=t.vehicle_id, details={"where": "uplink"}))
                             continue
 
@@ -279,7 +383,7 @@ def run_once(args: RunArgs) -> int:
 
                         t.status = TaskStatus.READY
                         t.enqueued_t = now
-                        rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id))
+                        rec.record(SimEvent(t=now, etype="UL_FINISHED", task_id=t.task_id, vehicle_id=t.vehicle_id, details=ul_details))
                         rec.record(SimEvent(t=now, etype="ENQUEUED", task_id=t.task_id, vehicle_id=t.vehicle_id))
                         queue.enqueue(t)
                     else:
@@ -317,6 +421,83 @@ def run_once(args: RunArgs) -> int:
 
             # --- CPU start/step ---
             if mec.is_idle():
+                if log_rankings and len(queue) > 0:
+                    decision_seq += 1
+                    decision_id = f"d{decision_seq:08d}"
+                    cand = list(queue.tasks)
+                    # Priority order
+                    priority_order = sorted(cand, key=lambda t: -t.priority)
+                    # Proposed order (prediction_aware)
+                    max_r = 0.0
+                    for t in cand:
+                        r = max(0.0, float(t.effective_deadline_t - now))
+                        if r > max_r:
+                            max_r = r
+
+                    def prop_score(t: Task) -> float:
+                        r = max(0.0, float(t.effective_deadline_t - now))
+                        f_dense = float(t.priority)
+                        f_sparse = 1.0 - (r / (max_r + 1e-9))
+                        return alpha * f_dense + (1.0 - alpha) * f_sparse
+
+                    proposed_order = sorted(cand, key=lambda t: -prop_score(t))
+                    if scheduler.name == "priority":
+                        chosen = priority_order[0]
+                    else:
+                        chosen = proposed_order[0]
+                    decision_by_task[chosen.task_id] = decision_id
+                    decision_alpha_by_task[chosen.task_id] = float(alpha)
+                    decision_t_by_task[chosen.task_id] = float(now)
+                    # Top-K diff
+                    k = 10
+                    topk_pri = [t.task_id for t in priority_order[:k]]
+                    topk_prop = [t.task_id for t in proposed_order[:k]]
+                    diff_positions = [i for i in range(min(k, len(topk_pri), len(topk_prop))) if topk_pri[i] != topk_prop[i]]
+                    decision_obj = {
+                        "t": float(now),
+                        "algo": scheduler.name,
+                        "alpha": float(alpha),
+                        "queue_snapshot_id": decision_id,
+                        "chosen_task_id": chosen.task_id,
+                        "chosen_rank_in_algo": (priority_order.index(chosen) + 1) if scheduler.name == "priority" else (proposed_order.index(chosen) + 1),
+                        "chosen_rank_in_priority": priority_order.index(chosen) + 1,
+                        "topk_diff": {
+                            "k": k,
+                            "diff_positions": diff_positions,
+                            "diff_count": len(diff_positions),
+                            "priority_topk": topk_pri,
+                            "proposed_topk": topk_prop,
+                        },
+                    }
+                    decision_f.write(json.dumps(decision_obj, ensure_ascii=False) + "\n")
+                    # Candidate logs: top-K per algo + ensure chosen is included
+                    for algo_name, ordered in (("priority", priority_order), ("prediction_aware", proposed_order)):
+                        top = ordered[:k]
+                        if chosen not in top:
+                            top = top + [chosen]
+                        for rank, t in enumerate(top, start=1):
+                            r = max(0.0, float(t.effective_deadline_t - now))
+                            f_dense = float(t.priority)
+                            f_sparse = 1.0 - (r / (max_r + 1e-9))
+                            p_score = prop_score(t)
+                            cand_obj = {
+                                "t": float(now),
+                                "algo": algo_name,
+                                "queue_snapshot_id": decision_id,
+                                "task_id": t.task_id,
+                                "rank_in_algo": rank,
+                                "prio_score": float(t.priority),
+                                "prop_score": float(p_score),
+                                "prop_terms": {
+                                    "alpha": float(alpha),
+                                    "f_dense": f_dense,
+                                    "f_sparse": f_sparse,
+                                    "r_eff_s": r,
+                                    "max_r": float(max_r),
+                                },
+                                "sort_key": (-p_score,),
+                            }
+                            candidate_f.write(json.dumps(cand_obj, ensure_ascii=False) + "\n")
                 started = mec.start_next_if_idle(now)
                 if started is not None:
                     started.meta["effective_deadline_at_start"] = started.effective_deadline_t
@@ -324,6 +505,10 @@ def run_once(args: RunArgs) -> int:
 
             finished = mec.step(dt=step_length, now=now + step_length)
             if finished is not None:
+                if log_rankings:
+                    decision_id = decision_by_task.get(finished.task_id)
+                    alpha_at_decision = decision_alpha_by_task.get(finished.task_id)
+                    decision_t = decision_t_by_task.get(finished.task_id)
                 if finished.cpu_finish_t is not None:
                     v = vehicles.get(finished.vehicle_id)
                     _update_task_deadline(finished, finished.cpu_finish_t, v, rsu, cfg)
@@ -331,18 +516,46 @@ def run_once(args: RunArgs) -> int:
                     finished.status = TaskStatus.DEADLINE_MISS
                     finished.meta["miss_where"] = "coverage"
                     rec.record(SimEvent(t=finished.cpu_finish_t or (now + step_length), etype="DEADLINE_MISS", task_id=finished.task_id, vehicle_id=finished.vehicle_id, details={"where": "coverage"}))
-                elif finished.cpu_finish_t is not None and finished.cpu_finish_t > finished.effective_deadline_t:
+                if finished.cpu_finish_t is not None and finished.cpu_finish_t > finished.effective_deadline_t:
                     finished.status = TaskStatus.DEADLINE_MISS
                     finished.meta["miss_where"] = "cpu"
                     rec.record(SimEvent(t=finished.cpu_finish_t, etype="DEADLINE_MISS", task_id=finished.task_id, vehicle_id=finished.vehicle_id, details={"where": "cpu"}))
                 else:
                     rec.record(SimEvent(t=finished.cpu_finish_t or (now + step_length), etype="CPU_FINISHED", task_id=finished.task_id, vehicle_id=finished.vehicle_id))
+                if log_rankings and finished.cpu_finish_t is not None:
+                    tardiness_s = max(0.0, float(finished.cpu_finish_t - finished.effective_deadline_t))
+                    met_deadline = bool(finished.cpu_finish_t <= finished.effective_deadline_t)
+                    margin = None
+                    if finished.cpu_start_t is not None:
+                        eff_start = finished.meta.get("effective_deadline_at_start")
+                        if eff_start is not None:
+                            margin = float(eff_start) - float(finished.cpu_start_t) - float(finished.compute_time_s)
+                    reward = 0.0
+                    if met_deadline and margin is not None:
+                        reward = float(finished.priority) + float(utility_beta) * float(margin)
+                    out_obj = {
+                        "task_id": finished.task_id,
+                        "decision_id": decision_id,
+                        "decision_t": decision_t,
+                        "decision_alpha": alpha_at_decision,
+                        "started_at": finished.cpu_start_t,
+                        "finished_at": finished.cpu_finish_t,
+                        "met_deadline": met_deadline,
+                        "tardiness_s": tardiness_s,
+                        "reward": reward,
+                    }
+                    outcome_f.write(json.dumps(out_obj, ensure_ascii=False) + "\n")
 
             clock.tick()
 
         # --- Persist raw + summary ---
         rec.dump_jsonl(str(raw_path))
         scenario_name = args.scenario_config_path or ""
+        alpha_true_mean = None
+        if alpha_true_series is not None:
+            _, vals = alpha_true_series
+            if vals:
+                alpha_true_mean = float(sum(vals) / len(vals))
         summary = summarize_tasks(
             tasks=tasks.values(),
             scenario=scenario_name,
@@ -352,13 +565,38 @@ def run_once(args: RunArgs) -> int:
             high_thr=high_thr,
             utility_beta=utility_beta,
             sim_duration_s=duration_s,
+            alpha_true_mean=alpha_true_mean,
         )
         write_summary_csv(summary, str(summary_path))
+
+        window_cfg = out_cfg.get("windowed_summary", {}) or {}
+        if bool(window_cfg.get("enabled", False)):
+            window_s = float(window_cfg.get("window_s", 60.0))
+            step_s = float(window_cfg.get("step_s", window_s))
+            window_rows = summarize_tasks_windowed(
+                tasks=tasks.values(),
+                events=rec.events,
+                window_s=window_s,
+                step_s=step_s,
+                scenario=scenario_name,
+                run_name=run_name,
+                scheduler=scheduler.name,
+                seed=seed,
+                high_thr=high_thr,
+                utility_beta=utility_beta,
+                sim_duration_s=duration_s,
+            )
+            window_path = summary_dir / f"summary_window_{run_name}_{scheduler.name}_{scenario_tag}.csv"
+            write_summary_rows_csv(window_rows, str(window_path))
 
         log.info("Run finished. Raw events: %s", raw_path)
         log.info("Run summary: %s", summary_path)
         return 0
     finally:
+        if log_rankings and decision_f is not None:
+            decision_f.close()
+            candidate_f.close()
+            outcome_f.close()
         traci.close()
 
 
